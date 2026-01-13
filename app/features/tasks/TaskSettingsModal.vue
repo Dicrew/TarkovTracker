@@ -65,6 +65,11 @@
               :label="labelSharedByAllOnly"
               :tooltip="tooltipSharedByAllOnly"
             />
+            <SettingsToggle
+              v-model="hideCompletedMapObjectives"
+              :label="labelHideCompletedMapObjectives"
+              :tooltip="tooltipHideCompletedMapObjectives"
+            />
           </section>
           <!-- APPEARANCE Section -->
           <section class="space-y-2">
@@ -225,6 +230,18 @@
       'Filters the list to tasks that every visible teammate has available'
     )
   );
+  const labelHideCompletedMapObjectives = computed(() =>
+    t(
+      'page.tasks.settings.filters.hideCompletedMapObjectives',
+      'Sort completed map objectives to bottom'
+    )
+  );
+  const tooltipHideCompletedMapObjectives = computed(() =>
+    t(
+      'page.tasks.settings.filters.hideCompletedMapObjectivesTooltip',
+      'Move tasks with all objectives on the current map complete to the bottom of the list'
+    )
+  );
   const labelShowRequiredLabels = computed(() =>
     t('page.tasks.settings.appearance.showRequiredLabels', 'Show "Required" labels')
   );
@@ -311,6 +328,10 @@
   const sharedByAllOnly = computed({
     get: () => preferencesStore.getTaskSharedByAllOnly,
     set: (value) => preferencesStore.setTaskSharedByAllOnly(value),
+  });
+  const hideCompletedMapObjectives = computed({
+    get: () => preferencesStore.getHideCompletedMapObjectives,
+    set: (value) => preferencesStore.setHideCompletedMapObjectives(value),
   });
   // Appearance preferences
   const showRequiredLabels = computed({

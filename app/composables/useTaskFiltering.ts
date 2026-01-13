@@ -35,6 +35,8 @@ export function useTaskFiltering() {
   // Cached trader order map to avoid rebuilding on every sort
   let cachedTraderOrderMap: Map<string, number> | null = null;
   let cachedTradersRef: typeof metadataStore.traders | null = null;
+  // Objective types that have map/location requirements
+  // These are objectives where completion is tied to a specific map location
   const mapObjectiveTypes = [
     'mark',
     'zone',
@@ -45,6 +47,9 @@ export function useTaskFiltering() {
     'plantItem',
     'plantQuestItem',
     'shoot',
+    'buildWeapon', // Installing/building items at locations (e.g., Wi-Fi Cameras)
+    'useItem', // Using items at specific locations
+    'place', // Placing items at locations
   ];
   /**
    * Filter tasks by primary view (all, maps, traders)
@@ -54,47 +59,84 @@ export function useTaskFiltering() {
     primaryView: string,
     mapView: string,
     traderView: string,
-    mergedMaps: MergedMap[]
+    mergedMaps: MergedMap[],
+    options?: {
+      sortCompletedMapObjectivesToBottom?: boolean;
+      userView?: string;
+    }
   ) => {
     if (primaryView === 'maps') {
-      return filterTasksByMap(taskList, mapView, mergedMaps);
+      return filterTasksByMap(taskList, mapView, mergedMaps, options);
     } else if (primaryView === 'traders') {
       return taskList.filter((task) => task.trader?.id === traderView);
     }
     return taskList;
   };
   /**
-   * Filter tasks by map, handling merged maps (Ground Zero, Factory)
+   * Check if all map-specific objectives for a task are complete on the given map(s)
+   * Returns true if all objectives on the specified map(s) are complete
    */
-  const filterTasksByMap = (taskList: Task[], mapView: string, mergedMaps: MergedMap[]) => {
-    const mergedMap = mergedMaps.find((m) => m.mergedIds && m.mergedIds.includes(mapView));
-    if (mergedMap && mergedMap.mergedIds) {
-      const ids = mergedMap.mergedIds;
-      return taskList.filter((task) => {
-        // Check locations field
-        const taskLocations = Array.isArray(task.locations) ? task.locations : [];
-        let hasMap = ids.some((id: string) => taskLocations.includes(id));
-        // Check objectives[].maps
-        if (!hasMap && Array.isArray(task.objectives)) {
-          hasMap = task.objectives.some(
-            (obj) =>
-              Array.isArray(obj.maps) &&
-              obj.maps.some((map) => ids.includes(map.id)) &&
-              mapObjectiveTypes.includes(obj.type || '')
-          );
-        }
-        return hasMap;
+  const areAllMapObjectivesComplete = (
+    task: Task,
+    mapIds: string[],
+    userView: string
+  ): boolean => {
+    if (!Array.isArray(task.objectives)) return false;
+    // Find objectives that are on this map
+    const mapObjectives = task.objectives.filter(
+      (obj) =>
+        Array.isArray(obj.maps) &&
+        obj.maps.some((map) => mapIds.includes(map.id)) &&
+        mapObjectiveTypes.includes(obj.type || '')
+    );
+    // If there are no objectives on this map, don't hide the task
+    if (mapObjectives.length === 0) return false;
+    // Check if all map objectives are complete
+    if (userView === 'all') {
+      // For "all" view, check if complete for ALL visible team members
+      const teamIds = Object.keys(progressStore.visibleTeamStores || {});
+      return mapObjectives.every((obj) => {
+        const completions = progressStore.objectiveCompletions[obj.id] || {};
+        return teamIds.every((teamId) => completions[teamId] === true);
       });
     } else {
-      // Default: single map logic
-      return taskList.filter((task) =>
-        task.objectives?.some(
-          (obj) =>
-            obj.maps?.some((map) => map.id === mapView) &&
-            mapObjectiveTypes.includes(obj.type || '')
-        )
-      );
+      // For single user view, check if complete for that user
+      return mapObjectives.every((obj) => {
+        const completions = progressStore.objectiveCompletions[obj.id] || {};
+        return completions[userView] === true;
+      });
     }
+  };
+  /**
+   * Filter tasks by map, handling merged maps (Ground Zero, Factory)
+   * Marks tasks with all map objectives complete with `_mapObjectivesComplete` flag
+   * These tasks will be sorted to the bottom of the list
+   */
+  const filterTasksByMap = (
+    taskList: Task[],
+    mapView: string,
+    mergedMaps: MergedMap[],
+    options?: {
+      sortCompletedMapObjectivesToBottom?: boolean;
+      userView?: string;
+    }
+  ): (Task & { _mapObjectivesComplete?: boolean })[] => {
+    const sortCompletedToBottom = options?.sortCompletedMapObjectivesToBottom ?? false;
+    const userView = options?.userView ?? 'self';
+    const mergedMap = mergedMaps.find((m) => m.mergedIds && m.mergedIds.includes(mapView));
+    const mapIds = mergedMap?.mergedIds || [mapView];
+    const result: (Task & { _mapObjectivesComplete?: boolean })[] = [];
+    for (const task of taskList) {
+      // Check if task has any association with this map
+      if (!taskHasMap(task, mapIds)) continue;
+      // Check if all map objectives are complete (for sorting to bottom)
+      if (sortCompletedToBottom && areAllMapObjectivesComplete(task, mapIds, userView)) {
+        result.push({ ...task, _mapObjectivesComplete: true });
+      } else {
+        result.push(task);
+      }
+    }
+    return result;
   };
   /**
    * Check if a task is invalid (permanently blocked) for a user
@@ -307,36 +349,24 @@ export function useTaskFiltering() {
     });
   };
   /**
-   * Helper to extract all map locations from a task
+   * Check if a task has any association with the given map IDs
    */
-  const extractTaskLocations = (task: Task): string[] => {
-    const locations = Array.isArray(task.locations) ? [...task.locations] : [];
-    if (Array.isArray(task.objectives)) {
-      for (const obj of task.objectives) {
-        if (Array.isArray(obj.maps)) {
-          for (const objMap of obj.maps) {
-            if (objMap?.id && !locations.includes(objMap.id)) {
-              locations.push(objMap.id);
-            }
-          }
-        }
-      }
+  const taskHasMap = (task: Task, mapIds: string[]): boolean => {
+    // Check locations field first
+    const taskLocations = Array.isArray(task.locations) ? task.locations : [];
+    if (mapIds.some((id) => taskLocations.includes(id))) {
+      return true;
     }
-    return locations;
-  };
-  /**
-   * Helper to check if task passes all filters
-   */
-  const taskPassesFilters = (
-    task: Task,
-    disabledTasks: string[],
-    hideGlobalTasks: boolean,
-    hideNonKappaTasks: boolean
-  ): boolean => {
-    if (disabledTasks.includes(task.id)) return false;
-    if (hideGlobalTasks && !task.map) return false;
-    if (hideNonKappaTasks && task.kappaRequired !== true) return false;
-    return true;
+    // Check objectives with location-based types
+    if (Array.isArray(task.objectives)) {
+      return task.objectives.some(
+        (obj) =>
+          Array.isArray(obj.maps) &&
+          obj.maps.some((map) => mapIds.includes(map.id)) &&
+          mapObjectiveTypes.includes(obj.type || '')
+      );
+    }
+    return false;
   };
   /**
    * Helper to check if user has unlocked task
@@ -376,7 +406,8 @@ export function useTaskFiltering() {
     hideGlobalTasks: boolean,
     hideNonKappaTasks: boolean,
     activeUserView: string,
-    secondaryView: string
+    secondaryView: string,
+    hideCompletedMapObjectives: boolean = false
   ) => {
     const perfTimer = perfStart('[Tasks] calculateMapTaskTotals', {
       tasks: tasks.length,
@@ -393,9 +424,14 @@ export function useTaskFiltering() {
       if (!mapId) continue;
       mapTaskCounts[mapId] = 0;
       for (const task of statusFilteredTasks) {
-        if (!taskPassesFilters(task, disabledTasks, hideGlobalTasks, hideNonKappaTasks)) continue;
-        const taskLocations = extractTaskLocations(task);
-        if (!ids.some((id: string) => taskLocations.includes(id))) continue;
+        if (disabledTasks.includes(task.id)) continue;
+        if (hideNonKappaTasks && task.kappaRequired !== true) continue;
+        // Check if task belongs to this map
+        if (!taskHasMap(task, ids)) continue;
+        // Apply hideCompletedMapObjectives filter
+        if (hideCompletedMapObjectives && areAllMapObjectivesComplete(task, ids, activeUserView)) {
+          continue;
+        }
         if (secondaryView === 'available') {
           if (!isTaskUnlockedForUser(task.id, activeUserView)) continue;
           if (!hasIncompleteObjectives(task, ids, activeUserView)) continue;
@@ -639,9 +675,13 @@ export function useTaskFiltering() {
         perfOn
       );
       visibleTaskList = afterType;
-      // Apply primary view filter
+      // Apply primary view filter with map-specific options
+      const mapFilterOptions = {
+        sortCompletedMapObjectivesToBottom: preferencesStore.getHideCompletedMapObjectives,
+        userView: activeUserView,
+      };
       const [afterView, filterViewMs] = timed(
-        () => filterTasksByView(visibleTaskList, activePrimaryView, activeMapView, activeTraderView, mergedMaps),
+        () => filterTasksByView(visibleTaskList, activePrimaryView, activeMapView, activeTraderView, mergedMaps, mapFilterOptions),
         perfOn
       );
       visibleTaskList = afterView;
@@ -679,16 +719,36 @@ export function useTaskFiltering() {
         () => sortTasks(visibleTaskList, activeUserView, sortMode, sortDirection),
         perfOn
       );
-      visibleTasks.value = sorted;
+      // Move tasks with all map objectives complete to the bottom (preserving sort order within groups)
+      const [finalSorted, mapCompleteMs] = timed(
+        () => {
+          if (!preferencesStore.getHideCompletedMapObjectives || activePrimaryView !== 'maps') {
+            return sorted;
+          }
+          const incomplete: typeof sorted = [];
+          const mapComplete: typeof sorted = [];
+          for (const task of sorted) {
+            if ((task as Task & { _mapObjectivesComplete?: boolean })._mapObjectivesComplete) {
+              mapComplete.push(task);
+            } else {
+              incomplete.push(task);
+            }
+          }
+          return [...incomplete, ...mapComplete];
+        },
+        perfOn
+      );
+      visibleTasks.value = finalSorted;
       perfEnd(perfTimer, {
         tasksIn,
-        tasksOut: sorted.length,
+        tasksOut: finalSorted.length,
         totalMs: perfOn ? roundMs(perfNow() - startOverall) : undefined,
         filterTypeMs: perfOn ? roundMs(filterTypeMs) : undefined,
         filterViewMs: perfOn ? roundMs(filterViewMs) : undefined,
         filterStatusMs: perfOn ? roundMs(filterStatusMs) : undefined,
         sharedFilterMs: perfOn ? roundMs(sharedFilterMs) : undefined,
         sortMs: perfOn ? roundMs(sortMs) : undefined,
+        mapCompleteMs: perfOn ? roundMs(mapCompleteMs) : undefined,
       });
     } finally {
       reloadingTasks.value = false;

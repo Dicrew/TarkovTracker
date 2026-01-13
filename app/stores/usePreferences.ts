@@ -37,6 +37,7 @@ export interface PreferencesState {
   itemsHideNonFIR: boolean;
   hideGlobalTasks: boolean;
   hideNonKappaTasks: boolean;
+  hideCompletedMapObjectives: boolean;
   neededitemsStyle: string | null;
   hideoutPrimaryView?: string | null;
   localeOverride: string | null;
@@ -92,6 +93,7 @@ export const preferencesDefaultState: PreferencesState = {
   itemsHideNonFIR: false,
   hideGlobalTasks: false,
   hideNonKappaTasks: false,
+  hideCompletedMapObjectives: false,
   neededitemsStyle: null,
   hideoutPrimaryView: null,
   localeOverride: null,
@@ -224,6 +226,9 @@ export const usePreferencesStore = defineStore('preferences', {
     },
     getHideNonKappaTasks: (state) => {
       return state.hideNonKappaTasks ?? false;
+    },
+    getHideCompletedMapObjectives: (state) => {
+      return state.hideCompletedMapObjectives ?? false;
     },
     getNeededItemsStyle: (state) => {
       return state.neededitemsStyle ?? 'mediumCard';
@@ -373,6 +378,9 @@ export const usePreferencesStore = defineStore('preferences', {
       this.saving = this.saving ?? { ...initialSavingState };
       this.saving.hideNonKappaTasks = true;
     },
+    setHideCompletedMapObjectives(hide: boolean) {
+      this.hideCompletedMapObjectives = hide;
+    },
     setNeededItemsStyle(style: string) {
       this.neededitemsStyle = style;
     },
@@ -460,6 +468,7 @@ export const usePreferencesStore = defineStore('preferences', {
       'itemsHideNonFIR',
       'hideGlobalTasks',
       'hideNonKappaTasks',
+      'hideCompletedMapObjectives',
       'neededitemsStyle',
       'hideoutPrimaryView',
       'localeOverride',
@@ -574,6 +583,7 @@ if (shouldInitPreferencesWatchers) {
                       items_hide_non_fir: preferencesState.itemsHideNonFIR,
                       hide_global_tasks: preferencesState.hideGlobalTasks,
                       hide_non_kappa_tasks: preferencesState.hideNonKappaTasks,
+                      hide_completed_map_objectives: preferencesState.hideCompletedMapObjectives,
                       show_non_special_tasks: preferencesState.showNonSpecialTasks,
                       show_lightkeeper_tasks: preferencesState.showLightkeeperTasks,
                       show_required_labels: preferencesState.showRequiredLabels,

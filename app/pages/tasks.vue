@@ -151,6 +151,7 @@
     getHideNonKappaTasks,
     getShowNonSpecialTasks,
     getShowLightkeeperTasks,
+    getHideCompletedMapObjectives,
   } = storeToRefs(preferencesStore);
   const metadataStore = useMetadataStore();
   const { tasks, loading: tasksLoading } = storeToRefs(metadataStore);
@@ -160,7 +161,8 @@
   // Edition data for filtering (reactive to trigger refresh when edition changes)
   const editions = computed(() => metadataStore.editions);
   const progressStore = useProgressStore();
-  const { tasksCompletions, unlockedTasks, tasksFailed } = storeToRefs(progressStore);
+  const { tasksCompletions, unlockedTasks, tasksFailed, objectiveCompletions } =
+    storeToRefs(progressStore);
   const { visibleTasks, reloadingTasks, updateVisibleTasks } = useTaskFiltering();
   const tarkovStore = useTarkovStore();
   // Game edition for filtering (reactive to trigger refresh when edition changes)
@@ -471,12 +473,14 @@
       getHideNonKappaTasks,
       getShowNonSpecialTasks,
       getShowLightkeeperTasks,
+      getHideCompletedMapObjectives,
       tasksLoading,
       tasks,
       maps,
       tasksCompletions,
       unlockedTasks,
       tasksFailed,
+      objectiveCompletions,
       userGameEdition,
       editions,
     ],

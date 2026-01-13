@@ -457,7 +457,8 @@
       preferencesStore.getHideGlobalTasks,
       preferencesStore.getHideNonKappaTasks,
       preferencesStore.getTaskUserView,
-      preferencesStore.getTaskSecondaryView
+      preferencesStore.getTaskSecondaryView,
+      preferencesStore.getHideCompletedMapObjectives
     );
   });
   // Primary view (all / maps / traders)
